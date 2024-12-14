@@ -176,8 +176,8 @@ print("> Number of batches loaded for testing: ", num_test_batches)
 iterable_batches = iter(train_dataloader) # making a dataset iterable
 images, labels = next(iterable_batches) # If you can call next() again, you get the next batch until no more batch left
 show_digit_image = True
-# if show_digit_image:
-#     show_some_digit_images(images)
+if show_digit_image:
+    show_some_digit_images(images)
 
 ### Create an object for the ANN model defined in the class
 # Architectural parameters: You can change these parameters except for num_input and num_classes
@@ -230,7 +230,7 @@ print(f"> Momentum (Gamma): {gamma}\n")
 
 print("............Testing CNN model................")
 predicted_digits=test_CNN_model(device, CUDA_enabled, CNN_model, test_dataloader)
-# print("> Predicted digits by CNN model")
-# print(predicted_digits)
+print("> Predicted digits by CNN model")
+print(predicted_digits)
 
 #### To save and load models and model's parameters ####

@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import time
 import torch, torch.nn as nn, torch.optim as optim
 import torch.nn.functional as AF
 from torchvision import datasets, transforms
@@ -17,12 +18,19 @@ class CNN(nn.Module):
         # max_pool2d(input_tensor, kernel_size, stride=None, padding=0) for 2D max pooling
         # Output size for W from POOL = (W-F)/S+1 where S=stride=dimension of pool
         # K is # of channels for convolution layer; D is # of channels for pooling layer
-        self.conv1 = nn.Conv2d(1, 10, kernel_size=5) # K=D=10, output_size W=(28-5)/1+1=24 (24x24), (default S=1)
-        self.pool1 = nn.MaxPool2d(4, 4) # W = (24-4)/4+1=6 (6x6), S=4 (pool dimension) since no overlapping regions
+        # Layer 1
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=5, stride=1, padding=0) # K=D=10, output_size W = ((28-5)/1)+1=24 (24x24), (default S=1)
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2, padding=0) # W = ((24-2)/2)+1=12 (12x12), S=2 (pool dimension) since no overlapping regions
         self.dropout_conv1 = nn.Dropout2d(dropout_pr) # to avoid overfitting by dropping some nodes
+        
         #+ You can add more convolutional and pooling layers
+        # Layer 2
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=5, stride=1, padding=0) # W = ((12-5)/1)+1=8 (8x8)
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2, padding=0) # W = ((8-2)/2)+1= (4x4)
+        self.dropout_conv2 = nn.Dropout2d(dropout_pr)
+        
         # Fully connected layer after convolutional and pooling layers
-        self.num_flatten_nodes = 10*6*6 # Flatten nodes from 10 channels and 6*6 pool_size = 10*6*6=360
+        self.num_flatten_nodes = 32*4*4 # Flatten nodes from 32 channels and 4*4 pool_size = 32*4*4 = 512
         self.fc1 = nn.Linear(self.num_flatten_nodes, num_hidden)
         #+ You can add more hidden layers here if necessary
         self.out = nn.Linear(num_hidden, num_classes) # the output nodes are 10 classes (10 digits)
@@ -30,10 +38,13 @@ class CNN(nn.Module):
     def forward(self, x):
         out = AF.relu(self.pool1(self.conv1(x)))
         out = AF.relu(self.dropout_conv1(out))
+
+        out = AF.relu(self.pool2(self.conv2(out)))
+        out = AF.relu(self.dropout_conv2(out))
+
         out = out.view(-1, self.num_flatten_nodes) # flattening
         out = AF.relu(self.fc1(out))
-        # Apply dropout for the randomly selected nodes by zeroing out before output during training
-        out = AF.dropout(out)
+        out = AF.dropout(out) # Apply dropout for the randomly selected nodes by zeroing out before output during training
         output = self.out(out)
         return output
 
@@ -97,7 +108,7 @@ def test_CNN_model(device, CUDA_enabled, CNN_model, testing_data):
             accuracy = num_correct/num_samples
             if (batch_cnt+1) % mini_batch_size == 0:
                 print(f"batch={batch_cnt+1}/{num_test_batches}")
-        print("> Number of samples=", num_samples, "number of correct prediction=", num_correct, "accuracy=", accuracy)
+        print(f"> Number of samples= {num_samples}, Number of correct predictions = {num_correct}, Accuracy = {accuracy}")
     return predicted_digits
 
 ########################### Checking GPU and setup #########################
@@ -150,11 +161,11 @@ print("> Classes:", train_dataset.classes)
 #train_data, val_data, test_data = random_split(train_dataset, [60,20,20])
 
 ### DataLoader will shuffle the training dataset and load the training and test dataset
-mini_batch_size = 100 #+ You can change this mini_batch_size
+mini_batch_size = 50 #+ You can change this mini_batch_size
 # If mini_batch_size==100, # of training batches=6000/100=600 batches, each batch contains 100 samples (images, labels)
 # DataLoader will load the data set, shuffle it, and partition it into a set of samples specified by mini_batch_size.
 train_dataloader=DataLoader(dataset=train_dataset, batch_size=mini_batch_size, shuffle=True)
-test_dataloader=DataLoader(dataset=test_dataset, batch_size=mini_batch_size, shuffle=True)
+test_dataloader=DataLoader(dataset=test_dataset, batch_size=mini_batch_size, shuffle=False)
 num_train_batches = len(train_dataloader)
 num_test_batches = len(test_dataloader)
 print("> Mini batch size: ", mini_batch_size)
@@ -165,13 +176,13 @@ print("> Number of batches loaded for testing: ", num_test_batches)
 iterable_batches = iter(train_dataloader) # making a dataset iterable
 images, labels = next(iterable_batches) # If you can call next() again, you get the next batch until no more batch left
 show_digit_image = True
-if show_digit_image:
-    show_some_digit_images(images)
+# if show_digit_image:
+#     show_some_digit_images(images)
 
 ### Create an object for the ANN model defined in the class
 # Architectural parameters: You can change these parameters except for num_input and num_classes
-num_input = 28*28   # 28X28=784 pixels of image
-num_classes = 10    # output layer
+num_input = 28*28   # 28X28=784 pixels of image *** DON'T CHANGE ***
+num_classes = 10    # output layer *** DON'T CHANGE ***
 num_hidden = 10     # number of neurons at the first hidden layer
 # Randomly selected neurons by dropout_pr probability will be dropped (zeroed out) for regularization.
 dropout_pr = 0.05
@@ -198,8 +209,8 @@ loss_func = nn.CrossEntropyLoss()
 # model hyperparameters and gradient methods
 # optim.SGD performs gradient descent and update the weigths through backpropagation.
 num_epochs = 1
-alpha = 0.01       # learning rate
-gamma = 0.5        # momentum
+alpha = 0.06       # learning rate
+gamma = 0.7        # momentum
 
 # Stochastic Gradient Descent (SGD) is used in this program.
 #+ You can choose other gradient methods (Adagrad, adadelta, Adam, etc.) and parameters
@@ -208,10 +219,18 @@ CNN_optimizer = optim.SGD(CNN_model.parameters(), lr=alpha, momentum=gamma)
 
 ### Train your networks
 print("............Training CNN................")
+start = time.time()
 train_loss=train_CNN_model(num_epochs, train_dataloader, device, CUDA_enabled, CNN_model, loss_func, CNN_optimizer)
+end = time.time()
+print(f"\n> Training Time: {end - start} seconds\n")
+print(f"> Loss Function: Cross Entropy Loss")
+print(f"> Gradient Method: SGD")
+print(f"> Learning Rate: {alpha}")
+print(f"> Momentum (Gamma): {gamma}\n")
+
 print("............Testing CNN model................")
 predicted_digits=test_CNN_model(device, CUDA_enabled, CNN_model, test_dataloader)
-print("> Predicted digits by CNN model")
-print(predicted_digits)
+# print("> Predicted digits by CNN model")
+# print(predicted_digits)
 
 #### To save and load models and model's parameters ####
